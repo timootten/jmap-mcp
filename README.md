@@ -1,7 +1,7 @@
 # jmap-mcp
 
 A small MCP server (stdio, Bun) for **one** JMAP mail account (RFC 8620, RFC 8621 incl. submission).
-It is written to be read in an afternoon: about 2,600 lines of TypeScript, three runtime dependencies
+It is written to be read in an afternoon: about 2,500 lines of TypeScript, three runtime dependencies
 (`@modelcontextprotocol/server`, `zod`, `htmlparser2`), no JMAP client library.
 
 Tested against Stalwart, but it only uses standard JMAP and runs against a mock server in its tests.
