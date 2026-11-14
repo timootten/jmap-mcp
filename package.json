@@ -1,6 +1,6 @@
 {
   "name": "@timootten/jmap-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "Small, auditable MCP server for one JMAP mail account (RFC 8620/8621)",
   "keywords": [
