@@ -34,3 +34,14 @@ jobs:
       - run: bun test
       # Authenticates through OIDC (npm trusted publishing), no token stored.
       - run: npm publish --provenance --access public
+
+  # Separate job: write access to contents lives here, id-token only in the job above.
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
