@@ -64,6 +64,71 @@ describe("tool registration per switch", () => {
     expect(r.isError).toBe(true);
     expect(mock.methods()).not.toContain("EmailSubmission/set");
   });
+  test("JMAP_READ=false removes the five read tools, account_info stays", async () => {
+    const p = await run({ JMAP_READ: "false", JMAP_DRAFTS: "true" });
+    expect(await p.tools()).toEqual(["account_info", "create_draft"]);
+    const r = await p.call("search_emails", {});
+    expect(r.isError).toBe(true);
+    const before = mock.apiCalls().length;
+    await p.call("list_mailboxes");
+    expect(mock.apiCalls().length).toBe(before);
+  });
+  test("send-only setup: no read tools, send works with a lone *", async () => {
+    const m = startMock();
+    const p = await startServer(
+      baseEnv(m.sessionUrl, {
+        JMAP_STATE_DIR: stateDir(),
+        JMAP_READ: "false",
+        JMAP_SEND: "true",
+        JMAP_ALLOWED_RECIPIENTS: "*",
+        JMAP_SEND_LIMIT_PER_HOUR: "unlimited",
+      }),
+    );
+    procs.push(p);
+    expect(await p.tools()).toEqual(["account_info", "reply_email", "send_draft", "send_email"]);
+    for (let i = 0; i < 15; i++) {
+      const r = await p.call("send_email", {
+        to: [`random${i}@anywhere.example`],
+        bcc: ["other@somewhere.example"],
+        subject: "s",
+        body: "b",
+      });
+      expect(r.isError, r.text).toBe(false);
+    }
+    expect(m.methods().filter((x) => x === "EmailSubmission/set").length).toBe(15);
+    expect(p.stderr()).toContain("allowlist is off");
+    expect(p.stderr()).toContain("rate limit is off");
+    const info = JSON.parse((await p.call("account_info")).text);
+    expect(info.allowed_recipient_patterns).toBe("any (*)");
+    expect(info.send_limit_per_hour).toBe("unlimited");
+    m.stop();
+  });
+  test("with * the address syntax and the sender are still enforced", async () => {
+    const m = startMock();
+    const p = await startServer(
+      baseEnv(m.sessionUrl, {
+        JMAP_STATE_DIR: stateDir(),
+        JMAP_SEND: "true",
+        JMAP_ALLOWED_RECIPIENTS: "*",
+      }),
+    );
+    procs.push(p);
+    const bad = ["a@x.org, b@y.org", "Name <a@x.org>", "a@x.org\nBcc: b@y.org"];
+    for (const to of bad) {
+      expect((await p.call("send_email", { to: [to], subject: "s", body: "b" })).isError).toBe(
+        true,
+      );
+    }
+    const from = await p.call("send_email", {
+      to: ["a@x.org"],
+      subject: "s",
+      body: "b",
+      from: "boss@example.org",
+    });
+    expect(from.isError).toBe(true);
+    expect(m.methods()).not.toContain("EmailSubmission/set");
+    m.stop();
+  });
   test("every tool has annotations", async () => {
     const p = await run({
       JMAP_SEND: "true",
@@ -109,9 +174,9 @@ describe("startup failures are fail-closed", () => {
   };
   test("send without allowlist", () =>
     fail(baseEnv(mock.sessionUrl, { JMAP_SEND: "true" }), /ALLOWED_RECIPIENTS/));
-  test("star allowlist", () =>
+  test("star mixed with other entries", () =>
     fail(
-      baseEnv(mock.sessionUrl, { JMAP_SEND: "true", JMAP_ALLOWED_RECIPIENTS: "*" }),
+      baseEnv(mock.sessionUrl, { JMAP_SEND: "true", JMAP_ALLOWED_RECIPIENTS: "a@x.org,*" }),
       /ALLOWED_RECIPIENTS/,
     ));
   test("typo in a boolean", () =>

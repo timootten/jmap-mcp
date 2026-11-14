@@ -75,9 +75,30 @@ describe("Allowlist", () => {
     expect(allow.matches("x@example.org.evil.com")).toBe(false);
   });
   test("rejects wildcard patterns", () => {
-    for (const p of ["*", "@*", "*@example.org", "@", "@.org", "a@b@c", ""]) {
+    for (const p of ["@*", "*@example.org", "a*@example.org", "@", "@.org", "a@b@c", ""]) {
       expect(() => new Allowlist([p]), p).toThrow();
     }
+  });
+});
+
+describe("Allowlist with *", () => {
+  test("a lone * allows every valid address", () => {
+    const any = parseAllowlist("*");
+    expect(any.any).toBe(true);
+    expect(any.matches("someone@random.example")).toBe(true);
+    expect(enforceAllowlist(rec(["a@x.org"], ["b@y.org"], ["c@z.org"]), any)).toEqual([
+      "a@x.org",
+      "b@y.org",
+      "c@z.org",
+    ]);
+  });
+  test("* cannot be mixed with other entries", () => {
+    expect(() => parseAllowlist("a@x.org,*")).toThrow();
+    expect(() => parseAllowlist("*,@x.org")).toThrow();
+  });
+  test("address syntax is still checked with *", () => {
+    expect(() => toAddress("a@x.org, b@evil.org")).toThrow(PolicyError);
+    expect(() => toAddress("Name <a@x.org>")).toThrow(PolicyError);
   });
 });
 

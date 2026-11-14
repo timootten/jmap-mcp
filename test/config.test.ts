@@ -145,7 +145,9 @@ describe("loadConfig", () => {
 
   test("sending needs an allowlist", () => {
     fails({ ...base(), JMAP_SEND: "true" }, /JMAP_ALLOWED_RECIPIENTS: required/);
-    fails({ ...base(), JMAP_SEND: "true", JMAP_ALLOWED_RECIPIENTS: "*" }, /ALLOWED_RECIPIENTS/);
+    expect(
+      loadConfig({ ...base(), JMAP_SEND: "true", JMAP_ALLOWED_RECIPIENTS: "*" }).allowlist?.any,
+    ).toBe(true);
     fails({ ...base(), JMAP_SEND: "true", JMAP_ALLOWED_RECIPIENTS: "@*" }, /ALLOWED_RECIPIENTS/);
     fails(
       { ...base(), JMAP_SEND: "true", JMAP_ALLOWED_RECIPIENTS: "a@x.org,*" },
@@ -169,9 +171,21 @@ describe("loadConfig", () => {
 
   test("send limit", () => {
     expect(loadConfig({ ...base(), JMAP_SEND_LIMIT_PER_HOUR: "3" }).sendLimitPerHour).toBe(3);
-    for (const bad of ["0", "-1", "1.5", "abc", "100000", ""]) {
+    expect(loadConfig({ ...base(), JMAP_SEND_LIMIT_PER_HOUR: "100000" }).sendLimitPerHour).toBe(
+      100_000,
+    );
+    expect(loadConfig({ ...base(), JMAP_SEND_LIMIT_PER_HOUR: "unlimited" }).sendLimitPerHour).toBe(
+      Number.POSITIVE_INFINITY,
+    );
+    for (const bad of ["0", "-1", "1.5", "abc", "100001", "Unlimited", "inf", ""]) {
       fails({ ...base(), JMAP_SEND_LIMIT_PER_HOUR: bad }, /JMAP_SEND_LIMIT_PER_HOUR/);
     }
+  });
+
+  test("JMAP_READ defaults to true and is a strict boolean", () => {
+    expect(loadConfig(base()).read).toBe(true);
+    expect(loadConfig({ ...base(), JMAP_READ: "false" }).read).toBe(false);
+    fails({ ...base(), JMAP_READ: "no" }, /JMAP_READ/);
   });
 
   test("state dir", () => {

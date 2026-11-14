@@ -59,6 +59,7 @@ export class RateLimiter {
   }
 
   used(): number {
+    if (this.limit === Number.POSITIVE_INFINITY) return 0;
     try {
       return this.#recent().length;
     } catch {
@@ -67,6 +68,7 @@ export class RateLimiter {
   }
 
   reserve(): void {
+    if (this.limit === Number.POSITIVE_INFINITY) return;
     const recent = this.#recent();
     if (recent.length >= this.limit) {
       const oldest = Math.min(...recent);

@@ -11,6 +11,7 @@ const KNOWN = new Set([
   "JMAP_PASSWORD",
   "JMAP_TOKEN",
   "JMAP_NAME",
+  "JMAP_READ",
   "JMAP_SEND",
   "JMAP_ALLOWED_RECIPIENTS",
   "JMAP_SEND_LIMIT_PER_HOUR",
@@ -31,11 +32,13 @@ export interface Config {
   sessionOrigin: string;
   apiOrigin: string | undefined;
   auth: Auth;
+  read: boolean;
   send: boolean;
   drafts: boolean;
   organize: boolean;
   attachments: boolean;
   allowlist: Allowlist | undefined;
+  /** `Infinity` when set to "unlimited". */
   sendLimitPerHour: number;
   stateDir: string;
   secrets: Secret[];
@@ -65,13 +68,16 @@ const schema = z.object({
     .string()
     .regex(/^[A-Za-z0-9._@+-]{1,64}$/, "must match [A-Za-z0-9._@+-], 1 to 64 characters")
     .optional(),
+  JMAP_READ: bool.optional(),
   JMAP_SEND: bool.optional(),
   JMAP_ALLOWED_RECIPIENTS: text(8192).optional(),
   JMAP_SEND_LIMIT_PER_HOUR: z
     .string()
-    .regex(/^[0-9]{1,4}$/, "must be a whole number from 1 to 1000")
-    .transform(Number)
-    .refine((n) => n >= 1 && n <= 1000, "must be a whole number from 1 to 1000")
+    .regex(/^(?:[0-9]{1,6}|unlimited)$/, 'must be a whole number from 1 to 100000, or "unlimited"')
+    .transform((v) => (v === "unlimited" ? Number.POSITIVE_INFINITY : Number(v)))
+    .refine((n) => n >= 1 && (n <= 100_000 || n === Number.POSITIVE_INFINITY), {
+      message: 'must be a whole number from 1 to 100000, or "unlimited"',
+    })
     .optional(),
   JMAP_DRAFTS: bool.optional(),
   JMAP_ORGANIZE: bool.optional(),
@@ -200,6 +206,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     sessionOrigin: sessionUrl.origin,
     apiOrigin,
     auth,
+    read: c.JMAP_READ !== "false",
     send: c.JMAP_SEND === "true",
     drafts: c.JMAP_DRAFTS === "true",
     organize: c.JMAP_ORGANIZE === "true",

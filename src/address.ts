@@ -61,10 +61,17 @@ export function toAddress(input: AddressInput): Address {
 
 export class Allowlist {
   readonly patterns: readonly string[];
+  /** True when the operator configured `*`: any valid address may be used. */
+  readonly any: boolean;
   readonly #exact = new Set<string>();
   readonly #domains = new Set<string>();
 
   constructor(patterns: string[]) {
+    this.any = patterns.length === 1 && patterns[0] === "*";
+    if (this.any) {
+      this.patterns = ["*"];
+      return;
+    }
     const seen: string[] = [];
     for (const raw of patterns) {
       try {
@@ -82,7 +89,7 @@ export class Allowlist {
         }
       } catch {
         throw new ConfigError(
-          "JMAP_ALLOWED_RECIPIENTS: each entry must be an exact address or an @domain pattern (no wildcards)",
+          "JMAP_ALLOWED_RECIPIENTS: each entry must be an exact address or an @domain pattern. A lone * allows every recipient but cannot be combined with other entries",
         );
       }
     }
@@ -90,6 +97,7 @@ export class Allowlist {
   }
 
   matches(email: string): boolean {
+    if (this.any) return true;
     const at = email.lastIndexOf("@");
     return this.#exact.has(email) || this.#domains.has(email.slice(at + 1));
   }
