@@ -253,10 +253,22 @@ export function createServer(deps: Deps, opts: { submission: boolean }): McpServ
       description:
         "Search mails, newest first. All filters are optional and combined with AND. Use `position` for the next page.",
       shape: {
-        text: z.string().max(200).optional().describe("Full-text search."),
-        from: z.string().max(200).optional(),
-        to: z.string().max(200).optional(),
-        subject: z.string().max(200).optional(),
+        text: z.string().max(200).optional().describe("Full-text search. Matches whole words."),
+        from: z
+          .string()
+          .max(200)
+          .optional()
+          .describe(
+            "Sender: a full address or a whole word of the name. Parts of a word do not match.",
+          ),
+        to: z
+          .string()
+          .max(200)
+          .optional()
+          .describe(
+            "Recipient: a full address or a whole word of the name. Parts of a word do not match.",
+          ),
+        subject: z.string().max(200).optional().describe("Whole words of the subject."),
         mailbox_id: mail.JMAP_ID.optional(),
         unread: z.boolean().optional(),
         flagged: z.boolean().optional(),
