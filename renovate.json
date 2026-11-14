@@ -19,6 +19,17 @@
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["patch"],
       "automerge": true
+    },
+    {
+      "description": "engines is a compatibility range for users, never pin it",
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
+      "description": "Node only runs npm publish in the release workflow; stay on the LTS line until a human moves it",
+      "matchPackageNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ]
 }
