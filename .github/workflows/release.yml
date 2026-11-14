@@ -26,11 +26,11 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
       - name: Tag must match package.json
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun test
+      # Authenticates through OIDC (npm trusted publishing), no token stored.
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
