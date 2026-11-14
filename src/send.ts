@@ -215,7 +215,7 @@ function readOutcome(replies: Reply[], emailId: string, rcpt: string[]): SendOut
   return {
     submissionId: String(made.id ?? ""),
     emailId,
-    status: typeof made.undoStatus === "string" ? made.undoStatus : "unknown",
+    status: typeof made.undoStatus === "string" ? made.undoStatus : "accepted",
     recipients: rcpt,
     warnings,
   };
