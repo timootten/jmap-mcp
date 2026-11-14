@@ -1,5 +1,11 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 100,
-  "ignorePatterns": ["bun.lock", "node_modules", "dist"]
+  "ignorePatterns": [
+    ".release-please-manifest.json",
+    "CHANGELOG.md",
+    "bun.lock",
+    "dist",
+    "node_modules"
+  ]
 }

@@ -29,7 +29,8 @@
     "lint": "oxlint && oxfmt --check",
     "format": "oxfmt",
     "check": "bun run typecheck && bun run lint",
-    "test": "bun test"
+    "test": "bun test",
+    "smoke": "bun scripts/smoke-pack.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",

@@ -146,6 +146,8 @@ An app password that may send needs: `authenticate`, the `jmapMailbox*` and `jma
 Without `jmapEmailDestroy` the server cannot delete anything for good. This is intended.
 Read-only accounts need only the read rights. `JMAP_ORGANIZE` needs `jmapEmailUpdate`, `JMAP_DRAFTS` needs `jmapEmailCreate`.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development, commit rules and the release process.
+
 ## Development
 
 ```sh

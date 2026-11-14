@@ -1,15 +1,21 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "oxc"],
-  "categories": { "correctness": "error", "suspicious": "error" },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
   "rules": {
     "typescript/no-explicit-any": "error",
     "no-console": "error"
   },
   "overrides": [
     {
-      "files": ["test/**"],
-      "rules": { "typescript/no-explicit-any": "off", "no-console": "off" }
+      "files": ["test/**", "scripts/**"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "no-console": "off"
+      }
     }
   ],
   "ignorePatterns": ["node_modules", "dist"]
