@@ -1,7 +1,7 @@
 # jmap-mcp
 
 A small MCP server (stdio, Bun) for **one** JMAP mail account (RFC 8620, RFC 8621 incl. submission).
-It is written to be read in an afternoon: about 2,000 lines of TypeScript, three runtime dependencies
+It is written to be read in an afternoon: about 2,600 lines of TypeScript, three runtime dependencies
 (`@modelcontextprotocol/server`, `zod`, `htmlparser2`), no JMAP client library.
 
 Tested against Stalwart, but it only uses standard JMAP and runs against a mock server in its tests.
@@ -17,21 +17,21 @@ Incoming mail is hostile input. The goal: a prompt injection in a mail cannot do
 
 **What the server enforces in code (not in the model):**
 
-| Protection | How |
-|---|---|
-| Recipient allowlist | Applies to To, Cc and Bcc, also for `reply_email` and `send_draft`. One plain address per entry. Addresses are parsed strictly (no display names, comments, lists, non-ASCII) and compared lowercase. Patterns are exact addresses or `@domain` (no wildcards, no subdomains). One bad recipient rejects the whole message. |
-| Sender | `from` must match a JMAP identity of the account. |
-| Rate limit | `JMAP_SEND_LIMIT_PER_HOUR`, sliding window, in memory and in a small file in `JMAP_STATE_DIR`. If the file is unreadable or corrupt, sending is refused. |
-| Audit log | JSON lines on stderr: time, account name, recipients, subject length, result. Never mail text, never credentials. |
-| Untrusted content | Everything from a mail (subject, addresses, body, file names, previews) is returned in `[UNTRUSTED_<nonce>] ... [/UNTRUSTED_<nonce>]` blocks. The nonce is new for every call and every line inside carries it. Marker-like strings in the content are removed. The server instructions tell the model that these blocks are data. |
-| Sanitizing | Zero-width and bidi characters, control characters, hidden HTML (`display:none`, `visibility:hidden`, `opacity:0`, font size 0, `hidden`, comments, scripts, styles), tracking pixels and Markdown images are removed. A visible warning with the character count is appended when something was removed. All scans are linear time (tests include 300,000 repetitions of `<style `). |
-| Network | HTTPS only (`http` for loopback with `JMAP_ALLOW_INSECURE_LOCALHOST=true`). Redirects are only followed inside the same origin. Credentials go only to the session origin and `JMAP_API_ORIGIN`. A session that names another host is rejected. Timeouts and size limits on every response. |
-| Secrets | Held in a wrapper that prints as `[redacted]`, removed from `process.env` after start, redacted from all log lines and error text. Server error text is shortened and cleaned before it reaches the model. |
-| No delete, no config change | There is no delete tool. Moving to Trash is refused. No tool changes configuration. |
+| Protection                  | How                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recipient allowlist         | Applies to To, Cc and Bcc, also for `reply_email` and `send_draft`. One plain address per entry. Addresses are parsed strictly (no display names, comments, lists, non-ASCII) and compared lowercase. Patterns are exact addresses or `@domain` (no wildcards, no subdomains). One bad recipient rejects the whole message.                                                           |
+| Sender                      | `from` must match a JMAP identity of the account.                                                                                                                                                                                                                                                                                                                                     |
+| Rate limit                  | `JMAP_SEND_LIMIT_PER_HOUR`, sliding window, in memory and in a small file in `JMAP_STATE_DIR`. If the file is unreadable or corrupt, sending is refused.                                                                                                                                                                                                                              |
+| Audit log                   | JSON lines on stderr: time, account name, recipients, subject length, result. Never mail text, never credentials.                                                                                                                                                                                                                                                                     |
+| Untrusted content           | Everything from a mail (subject, addresses, body, file names, previews) is returned in `[UNTRUSTED_<nonce>] ... [/UNTRUSTED_<nonce>]` blocks. The nonce is new for every call and every line inside carries it. Marker-like strings in the content are removed. The server instructions tell the model that these blocks are data.                                                    |
+| Sanitizing                  | Zero-width and bidi characters, control characters, hidden HTML (`display:none`, `visibility:hidden`, `opacity:0`, font size 0, `hidden`, comments, scripts, styles), tracking pixels and Markdown images are removed. A visible warning with the character count is appended when something was removed. All scans are linear time (tests include 300,000 repetitions of `<style `). |
+| Network                     | HTTPS only (`http` for loopback with `JMAP_ALLOW_INSECURE_LOCALHOST=true`). Redirects are only followed inside the same origin. Credentials go only to the session origin and `JMAP_API_ORIGIN`. A session that names another host is rejected. Timeouts and size limits on every response.                                                                                           |
+| Secrets                     | Held in a wrapper that prints as `[redacted]`, removed from `process.env` after start, redacted from all log lines and error text. Server error text is shortened and cleaned before it reaches the model.                                                                                                                                                                            |
+| No delete, no config change | There is no delete tool. Moving to Trash is refused. No tool changes configuration.                                                                                                                                                                                                                                                                                                   |
 
 **What it does not protect against:**
 
-- A mail can still *persuade the model to do something inside the allowed scope*: send a text of its choosing to an allowed recipient, mark or move mail (if `JMAP_ORGANIZE`), read mail and attachments and repeat their content to an allowed recipient. Keep the allowlist short and use the permission rules below.
+- A mail can still _persuade the model to do something inside the allowed scope_: send a text of its choosing to an allowed recipient, mark or move mail (if `JMAP_ORGANIZE`), read mail and attachments and repeat their content to an allowed recipient. Keep the allowlist short and use the permission rules below.
 - The fencing is a mitigation, not a guarantee. Models can still be fooled by text inside a fence.
 - Whoever can edit your MCP client config can change every setting. Protect that file.
 - Plain text only. The server sends no HTML and no attachments.
@@ -50,21 +50,21 @@ The package ships TypeScript (`bin` points at `src/index.ts` with a `#!/usr/bin/
 
 All variables are validated at start. Any error ends the process with a message on stderr (fail closed). Any unknown `JMAP_*` variable is an error.
 
-| Variable | Required | Meaning |
-|---|---|---|
-| `JMAP_SESSION_URL` | yes | JMAP session URL, https only |
-| `JMAP_API_ORIGIN` | no | Replaces the origin of `apiUrl`, `uploadUrl`, `downloadUrl`, `eventSourceUrl` from the session. Needed when the server advertises a host that is not reachable from outside (seen with Stalwart). |
-| `JMAP_USERNAME` + `JMAP_PASSWORD` | yes (Basic) | User and password or app password. Taken as is, including inner spaces (`app xxxxxxxx`). At most one trailing line ending is removed. |
-| `JMAP_TOKEN` | yes (Bearer) | Bearer token. Exactly one of the two login methods. |
-| `JMAP_NAME` | no | Short name for logs and the state file. Default: user name. |
-| `JMAP_SEND` | no | `true` or `false` (default `false`) |
-| `JMAP_ALLOWED_RECIPIENTS` | if `JMAP_SEND=true` | Comma-separated exact addresses or `@domain` patterns. `*` is not allowed. |
-| `JMAP_SEND_LIMIT_PER_HOUR` | no | Default `10`, range 1 to 1000 |
-| `JMAP_DRAFTS` | no | `create_draft`. Default `false` |
-| `JMAP_ORGANIZE` | no | `mark_emails`, `move_emails`. Default `false` |
-| `JMAP_ATTACHMENTS` | no | `get_attachment`. Default `false` |
-| `JMAP_STATE_DIR` | no | Absolute path for the rate-limit file. Default `$XDG_STATE_HOME/jmap-mcp` (or `~/.local/state/jmap-mcp`) |
-| `JMAP_ALLOW_INSECURE_LOCALHOST` | no | `true` allows `http` for `localhost`, `127.0.0.1`, `[::1]` only. Default `false` |
+| Variable                          | Required            | Meaning                                                                                                                                                                                           |
+| --------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `JMAP_SESSION_URL`                | yes                 | JMAP session URL, https only                                                                                                                                                                      |
+| `JMAP_API_ORIGIN`                 | no                  | Replaces the origin of `apiUrl`, `uploadUrl`, `downloadUrl`, `eventSourceUrl` from the session. Needed when the server advertises a host that is not reachable from outside (seen with Stalwart). |
+| `JMAP_USERNAME` + `JMAP_PASSWORD` | yes (Basic)         | User and password or app password. Taken as is, including inner spaces (`app xxxxxxxx`). At most one trailing line ending is removed.                                                             |
+| `JMAP_TOKEN`                      | yes (Bearer)        | Bearer token. Exactly one of the two login methods.                                                                                                                                               |
+| `JMAP_NAME`                       | no                  | Short name for logs and the state file. Default: user name.                                                                                                                                       |
+| `JMAP_SEND`                       | no                  | `true` or `false` (default `false`)                                                                                                                                                               |
+| `JMAP_ALLOWED_RECIPIENTS`         | if `JMAP_SEND=true` | Comma-separated exact addresses or `@domain` patterns. `*` is not allowed.                                                                                                                        |
+| `JMAP_SEND_LIMIT_PER_HOUR`        | no                  | Default `10`, range 1 to 1000                                                                                                                                                                     |
+| `JMAP_DRAFTS`                     | no                  | `create_draft`. Default `false`                                                                                                                                                                   |
+| `JMAP_ORGANIZE`                   | no                  | `mark_emails`, `move_emails`. Default `false`                                                                                                                                                     |
+| `JMAP_ATTACHMENTS`                | no                  | `get_attachment`. Default `false`                                                                                                                                                                 |
+| `JMAP_STATE_DIR`                  | no                  | Absolute path for the rate-limit file. Default `$XDG_STATE_HOME/jmap-mcp` (or `~/.local/state/jmap-mcp`)                                                                                          |
+| `JMAP_ALLOW_INSECURE_LOCALHOST`   | no                  | `true` allows `http` for `localhost`, `127.0.0.1`, `[::1]` only. Default `false`                                                                                                                  |
 
 Booleans are exactly `true` or `false`. `True`, `1`, `yes` and a trailing space are startup errors.
 
@@ -73,14 +73,14 @@ If the session cannot be reached at start, the server still starts. The first ca
 
 ## Tools
 
-| Tool | Switch | Notes |
-|---|---|---|
-| `account_info` | always | name, user, enabled capabilities, number of allowlist patterns, identities. No credentials. |
-| `list_mailboxes`, `search_emails`, `get_email`, `get_thread`, `list_identities` | always | read only, paged (`limit`, `position`, `offset`) |
-| `create_draft` | `JMAP_DRAFTS` | saves to Drafts, sends nothing |
-| `send_email`, `reply_email`, `send_draft` | `JMAP_SEND` | allowlist, rate limit, audit |
-| `mark_emails`, `move_emails` | `JMAP_ORGANIZE` | max 50 ids, no move to Trash |
-| `get_attachment` | `JMAP_ATTACHMENTS` | text up to 100 KB, images (png, jpeg, gif, webp) up to 500 KB |
+| Tool                                                                            | Switch             | Notes                                                                                       |
+| ------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| `account_info`                                                                  | always             | name, user, enabled capabilities, number of allowlist patterns, identities. No credentials. |
+| `list_mailboxes`, `search_emails`, `get_email`, `get_thread`, `list_identities` | always             | read only, paged (`limit`, `position`, `offset`)                                            |
+| `create_draft`                                                                  | `JMAP_DRAFTS`      | saves to Drafts, sends nothing                                                              |
+| `send_email`, `reply_email`, `send_draft`                                       | `JMAP_SEND`        | allowlist, rate limit, audit                                                                |
+| `mark_emails`, `move_emails`                                                    | `JMAP_ORGANIZE`    | max 50 ids, no move to Trash                                                                |
+| `get_attachment`                                                                | `JMAP_ATTACHMENTS` | text up to 100 KB, images (png, jpeg, gif, webp) up to 500 KB                               |
 
 A tool is only registered when its switch is on, and every call checks the switch again. All tools carry `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`.
 
@@ -135,7 +135,7 @@ Tool names are `<server>_<tool>`. The `ask` rules make OpenCode ask before every
 Limits of this setup:
 
 - The `edit` rule only covers OpenCode's own edit tools. A shell tool can still change the file unless you also restrict `shell`. Better: make the file read-only for the user that runs the agent, or manage it from outside the agent's reach.
-- Whether the `ask` and `deny` rules take effect on MCP tools and files in your setup was not tested here (see the project notes). Test it once with a harmless call before relying on it.
+- Whether the `ask` and `deny` rules take effect on MCP tools and files in your setup was not tested (OpenCode has no offline way to evaluate permissions, and a real test would need a send). Test it once with a harmless call before relying on it.
 - If the config is rendered from a repo (for example by an entrypoint script that copies it on every start), edits inside the container do not persist anyway.
 
 ## Stalwart rights
