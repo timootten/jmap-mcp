@@ -40,7 +40,7 @@ export function normalizeEmail(raw: string): string {
 export function cleanName(raw: string | null | undefined): string | undefined {
   if (!raw) return undefined;
   const cleaned = raw
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: strips control characters on purpose
+    // oxlint-disable-next-line no-control-regex -- strips control characters on purpose
     .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff<>"@]/g, " ")
     .replace(/\s+/g, " ")
     .trim()

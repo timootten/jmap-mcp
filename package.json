@@ -1,10 +1,20 @@
 {
   "name": "@timootten/jmap-mcp",
   "version": "0.1.0",
-  "description": "Small, auditable MCP server for one JMAP mail account (RFC 8620/8621)",
-  "type": "module",
-  "license": "MIT",
   "private": false,
+  "description": "Small, auditable MCP server for one JMAP mail account (RFC 8620/8621)",
+  "keywords": [
+    "bun",
+    "email",
+    "jmap",
+    "mcp",
+    "stalwart"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/timootten/jmap-mcp.git"
+  },
   "bin": {
     "jmap-mcp": "src/index.ts"
   },
@@ -13,16 +23,11 @@
     "README.md",
     "LICENSE"
   ],
-  "engines": {
-    "bun": ">=1.3.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/timootten/jmap-mcp.git"
-  },
+  "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
+    "lint": "oxlint && oxfmt --check",
+    "format": "oxfmt",
     "check": "bun run typecheck && bun run lint",
     "test": "bun test"
   },
@@ -32,15 +37,12 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.7",
     "@types/bun": "1.4.4",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
     "typescript": "7.0.2"
   },
-  "keywords": [
-    "mcp",
-    "jmap",
-    "email",
-    "stalwart",
-    "bun"
-  ]
+  "engines": {
+    "bun": ">=1.3.0"
+  }
 }

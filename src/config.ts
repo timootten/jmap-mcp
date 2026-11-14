@@ -57,7 +57,7 @@ const schema = z.object({
   JMAP_API_ORIGIN: text(2048).optional(),
   JMAP_USERNAME: text(320)
     .refine((v) => !v.includes(":"), "must not contain a colon")
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: rejects control characters
+    // oxlint-disable-next-line no-control-regex -- rejects control characters on purpose
     .refine((v) => !/[\u0000-\u001f\u007f]/.test(v), "must not contain control characters")
     .optional(),
   JMAP_PASSWORD: text(1024).optional(),

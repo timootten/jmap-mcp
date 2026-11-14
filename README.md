@@ -105,8 +105,8 @@ Checked against the config schema of OpenCode 2.2.7 (`opencode debug config` loa
           "JMAP_SESSION_URL": "https://stalwart.example.eu/jmap/session",
           "JMAP_API_ORIGIN": "https://stalwart.example.eu",
           "JMAP_USERNAME": "timo@example.eu",
-          "JMAP_PASSWORD": "{env:STALWART_PW_SHADEHOST_EU}"
-        }
+          "JMAP_PASSWORD": "{env:STALWART_PW_SHADEHOST_EU}",
+        },
       },
       "mail-timootten-com": {
         "type": "local",
@@ -118,17 +118,17 @@ Checked against the config schema of OpenCode 2.2.7 (`opencode debug config` loa
           "JMAP_USERNAME": "hi@example.com",
           "JMAP_PASSWORD": "{env:STALWART_PW_TIMOOTTEN_COM}",
           "JMAP_SEND": "true",
-          "JMAP_ALLOWED_RECIPIENTS": "friend@example.net,@example.org"
-        }
-      }
-    }
+          "JMAP_ALLOWED_RECIPIENTS": "friend@example.net,@example.org",
+        },
+      },
+    },
   },
   "permissions": [
     { "action": "mail-timootten-com_send_email", "resource": "*", "effect": "ask" },
     { "action": "mail-timootten-com_reply_email", "resource": "*", "effect": "ask" },
     { "action": "mail-timootten-com_send_draft", "resource": "*", "effect": "ask" },
-    { "action": "edit", "resource": "~/.config/opencode/opencode.jsonc", "effect": "deny" }
-  ]
+    { "action": "edit", "resource": "~/.config/opencode/opencode.jsonc", "effect": "deny" },
+  ],
 }
 ```
 
@@ -150,7 +150,7 @@ Read-only accounts need only the read rights. `JMAP_ORGANIZE` needs `jmapEmailUp
 
 ```sh
 bun install --frozen-lockfile
-bun run check   # tsc + biome
+bun run check   # tsc + oxlint + oxfmt --check
 bun test
 ```
 

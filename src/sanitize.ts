@@ -14,14 +14,19 @@ export interface Cleaned {
 
 /** Zero-width, bidi, soft hyphen, word joiner, BOM, Unicode tag and variation-selector-supplement characters. */
 const INVISIBLE =
+  // oxlint-disable-next-line no-misleading-character-class -- tag and variation-selector ranges are removed one by one
   /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
+// oxlint-disable-next-line no-control-regex -- strips control characters on purpose
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
 
 /** Replaces control characters and line separators with spaces. For header values. */
 export function headerSafe(raw: string): string {
-  return stripInvisible(raw)
-    .text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ")
-    .trim();
+  return (
+    stripInvisible(raw)
+      // oxlint-disable-next-line no-control-regex -- strips control characters on purpose
+      .text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ")
+      .trim()
+  );
 }
 
 export function stripInvisible(text: string): { text: string; removed: number } {
