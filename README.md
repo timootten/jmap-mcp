@@ -42,7 +42,7 @@ Incoming mail is hostile input. The goal: a prompt injection in a mail cannot do
 ## Install and start
 
 ```jsonc
-"command": ["bunx", "@timootten/jmap-mcp@0.1.0"]
+"command": ["bunx", "@timootten/jmap-mcp@0.1.2"]
 ```
 
 The package ships TypeScript (`bin` points at `src/index.ts` with a `#!/usr/bin/env bun` shebang). Bun runs it directly, no build step. Pin an exact version.
@@ -99,7 +99,7 @@ Checked against the config schema of OpenCode 2.2.7 (`opencode debug config` loa
     "servers": {
       "mail-shadehost-eu": {
         "type": "local",
-        "command": ["bunx", "@timootten/jmap-mcp@0.1.0"],
+        "command": ["bunx", "@timootten/jmap-mcp@0.1.2"],
         "cwd": "~",
         "environment": {
           "JMAP_SESSION_URL": "https://stalwart.example.eu/jmap/session",
@@ -110,7 +110,7 @@ Checked against the config schema of OpenCode 2.2.7 (`opencode debug config` loa
       },
       "mail-timootten-com": {
         "type": "local",
-        "command": ["bunx", "@timootten/jmap-mcp@0.1.0"],
+        "command": ["bunx", "@timootten/jmap-mcp@0.1.2"],
         "cwd": "~",
         "environment": {
           "JMAP_SESSION_URL": "https://stalwart.example.eu/jmap/session",
