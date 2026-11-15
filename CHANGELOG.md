@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/timootten/jmap-mcp/compare/v0.1.2...v0.1.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* use the current version in the README examples ([#14](https://github.com/timootten/jmap-mcp/issues/14)) ([c0e32f0](https://github.com/timootten/jmap-mcp/commit/c0e32f00f943cef305db042461b0df212916f05d))
+
 ## [0.1.2](https://github.com/timootten/jmap-mcp/compare/v0.1.1...v0.1.2) (2026-11-15)
 
 
