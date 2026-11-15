@@ -25,11 +25,12 @@ the next version:
 Nobody edits the version or creates tags by hand.
 
 1. Merging to `main` updates the **release PR** (`chore: release x.y.z`) with the new version and `CHANGELOG.md`.
-2. Merge the release PR when you want to ship. This creates the tag and the GitHub release.
-3. The same workflow stages the package on npm (`npm stage publish`, OIDC, with provenance). It waits for
-   approval of the `npm` environment, then runs `bun run check`, `bun test` and `bun run smoke` on the tag.
-4. Approve the staged version with 2FA on npmjs.com (Staged Packages) or with `npm stage list` and
-   `npm stage approve <id>`. Only then is it installable.
+2. Merge the release PR when you want to ship. That is the whole release: the workflow creates the tag and the
+   GitHub release, runs `bun run check`, `bun test` and `bun run smoke` on the tag, and publishes to npm
+   (OIDC, with provenance, no stored token).
+
+The checks on the release PR may show `action_required` because a bot opened it. Ignore them: the publish job runs
+the same checks before it publishes, and nothing requires them to merge.
 
 To force a version, put `Release-As: x.y.z` in the body of a commit on `main`.
 
@@ -39,5 +40,5 @@ delete tags: release tags are immutable.
 ## One-time setup (already done)
 
 - npm trusted publisher: repository `timootten/jmap-mcp`, workflow `release.yml`, environment `npm`.
-- GitHub environment `npm`: deployments only from `main`, required reviewer.
+- GitHub environment `npm`: deployments only from `main`.
 - GitHub repository: squash merge only, immutable releases on, Actions may create pull requests.
