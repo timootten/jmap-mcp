@@ -67,5 +67,5 @@ jobs:
       - run: bun run check
       - run: bun test
       - run: bun run smoke
-      - name: Publish to npm (a maintainer approves it with 2FA)
-        run: npm stage publish --provenance --access public
+      - name: Publish to npm
+        run: npm publish --provenance --access public
