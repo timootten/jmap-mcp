@@ -1,24 +1,25 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "minimumReleaseAge": "3 days",
+  "minimumReleaseAge": "1 day",
   "rangeStrategy": "pin",
+  "reviewers": ["timootten"],
+  "platformAutomerge": true,
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 5am on monday"]
   },
   "packageRules": [
     {
+      "description": "Automerge minor and patch updates once CI is green",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
       "description": "MCP SDK: own group, always reviewed by hand",
       "matchPackageNames": ["/^@modelcontextprotocol//"],
       "groupName": "MCP SDK",
       "automerge": false
-    },
-    {
-      "description": "Automerge patch updates of devDependencies once CI is green",
-      "matchDepTypes": ["devDependencies"],
-      "matchUpdateTypes": ["patch"],
-      "automerge": true
     },
     {
       "description": "engines is a compatibility range for users, never pin it",
