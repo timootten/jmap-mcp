@@ -5,6 +5,9 @@ export interface AuditEvent {
   result: "sent" | "draft_created" | "denied" | "error";
   recipients?: string[];
   subjectLength?: number;
+  /** Attached file names (cleaned and cut), or the paths a refused request asked for. */
+  attachments?: string[];
+  attachmentBytes?: number;
   /** Fixed reason code written by this program, never server text. */
   reason?: string;
 }

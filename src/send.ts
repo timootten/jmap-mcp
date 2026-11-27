@@ -5,8 +5,21 @@ import {
   normalizeEmail,
   type Recipients,
 } from "./address.ts";
+import {
+  type AttachmentFile,
+  type AttachmentSource,
+  loadAttachments,
+  MAX_ATTACHMENTS,
+} from "./attachments.ts";
 import { JmapError, PolicyError } from "./errors.ts";
-import { CAP_CORE, CAP_MAIL, CAP_SUBMISSION, JmapClient, type Reply } from "./jmap.ts";
+import {
+  CAP_CORE,
+  CAP_MAIL,
+  CAP_SUBMISSION,
+  JmapClient,
+  type Reply,
+  type Session,
+} from "./jmap.ts";
 import type { Logger } from "./log.ts";
 import {
   type Identity,
@@ -25,6 +38,8 @@ export interface Outgoing {
   body: string;
   inReplyTo?: string[];
   references?: string[];
+  /** Paths relative to the attachment folder. */
+  attachments?: string[] | undefined;
 }
 
 export interface SendDeps {
@@ -32,6 +47,13 @@ export interface SendDeps {
   allowlist: Allowlist | undefined;
   limiter: RateLimiter;
   log: Logger;
+  attachments?: AttachmentSource | undefined;
+}
+
+export interface DraftDeps {
+  client: JmapClient;
+  log: Logger;
+  attachments?: AttachmentSource | undefined;
 }
 
 function localDomainMatch(pattern: string, email: string): boolean {
@@ -86,14 +108,42 @@ export async function requireSubmission(c: JmapClient): Promise<void> {
   }
 }
 
-function emailObject(o: Outgoing, from: Address, drafts: Mailbox): Record<string, unknown> {
+interface Uploaded {
+  blobId: string;
+  name: string;
+  type: string;
+}
+
+function bodyStructure(uploaded: Uploaded[]): Record<string, unknown> {
+  const text = { partId: "body", type: "text/plain" };
+  if (uploaded.length === 0) return text;
+  return {
+    type: "multipart/mixed",
+    subParts: [
+      text,
+      ...uploaded.map((u) => ({
+        blobId: u.blobId,
+        type: u.type,
+        name: u.name,
+        disposition: "attachment",
+      })),
+    ],
+  };
+}
+
+function emailObject(
+  o: Outgoing,
+  from: Address,
+  drafts: Mailbox,
+  uploaded: Uploaded[] = [],
+): Record<string, unknown> {
   const obj: Record<string, unknown> = {
     mailboxIds: { [drafts.id]: true },
     keywords: { $draft: true, $seen: true },
     from: [jmapAddr(from)],
     to: o.recipients.to.map(jmapAddr),
     subject: safeSubject(o.subject),
-    bodyStructure: { partId: "body", type: "text/plain" },
+    bodyStructure: bodyStructure(uploaded),
     bodyValues: { body: { value: o.body } },
   };
   if (o.recipients.cc.length) obj.cc = o.recipients.cc.map(jmapAddr);
@@ -178,25 +228,105 @@ function gatekeep(d: SendDeps, tool: string, rec: Recipients): string[] {
   }
 }
 
+const auditNames = (names: string[]): string[] =>
+  names.slice(0, MAX_ATTACHMENTS).map((n) => headerSafe(n).slice(0, 100));
+
+/** Reads the files from the attachment folder. Nothing is sent or uploaded yet. */
+function loadFiles(
+  deps: { log: Logger; attachments?: AttachmentSource | undefined },
+  tool: string,
+  rcpt: string[],
+  rels: string[] | undefined,
+): AttachmentFile[] {
+  if (!rels || rels.length === 0) return [];
+  try {
+    if (!deps.attachments) {
+      throw new PolicyError("Attachments are not enabled (JMAP_ATTACHMENT_DIR is not set).");
+    }
+    return loadAttachments(deps.attachments, rels);
+  } catch (e) {
+    deps.log.audit({
+      tool,
+      result: "denied",
+      ...(rcpt.length > 0 ? { recipients: rcpt } : {}),
+      attachments: auditNames(rels),
+      reason: "attachment_rejected",
+    });
+    throw e;
+  }
+}
+
+function assertUploadable(s: Session, files: AttachmentFile[]): void {
+  if (files.length === 0) return;
+  if (!s.uploadUrl) {
+    throw new PolicyError("This server does not offer uploads, so it cannot send attachments.");
+  }
+  const tooBig = files.find(
+    (f) => s.maxSizeUpload !== undefined && f.bytes.length > s.maxSizeUpload,
+  );
+  if (tooBig) {
+    throw new PolicyError(`A file is larger than the server accepts (${s.maxSizeUpload} bytes).`);
+  }
+}
+
+async function uploadAll(client: JmapClient, files: AttachmentFile[]): Promise<Uploaded[]> {
+  return Promise.all(
+    files.map(async (f) => ({
+      blobId: await client.upload(f.bytes, f.type),
+      name: f.name,
+      type: f.type,
+    })),
+  );
+}
+
+interface AuditInfo {
+  rcpt: string[];
+  subjectLength: number;
+  attachments?: string[];
+  attachmentBytes?: number;
+}
+
+const attachmentInfo = (files: AttachmentFile[]) =>
+  files.length === 0
+    ? {}
+    : {
+        attachments: auditNames(files.map((f) => f.name)),
+        attachmentBytes: files.reduce((n, f) => n + f.bytes.length, 0),
+      };
+
 async function submit(
   d: SendDeps,
   tool: string,
-  rcpt: string[],
-  subjectLength: number,
+  info: AuditInfo,
   run: () => Promise<SendOutcome>,
 ): Promise<SendOutcome> {
+  const { rcpt, subjectLength, ...extra } = info;
   try {
     d.limiter.reserve();
   } catch (e) {
-    d.log.audit({ tool, result: "denied", recipients: rcpt, subjectLength, reason: "rate_limit" });
+    d.log.audit({
+      tool,
+      result: "denied",
+      recipients: rcpt,
+      subjectLength,
+      ...extra,
+      reason: "rate_limit",
+    });
     throw e;
   }
   try {
     const out = await run();
-    d.log.audit({ tool, result: "sent", recipients: rcpt, subjectLength });
+    d.log.audit({ tool, result: "sent", recipients: rcpt, subjectLength, ...extra });
     return out;
   } catch (e) {
-    d.log.audit({ tool, result: "error", recipients: rcpt, subjectLength, reason: "send_failed" });
+    d.log.audit({
+      tool,
+      result: "error",
+      recipients: rcpt,
+      subjectLength,
+      ...extra,
+      reason: "send_failed",
+    });
     throw e;
   }
 }
@@ -226,15 +356,21 @@ const USING = [CAP_CORE, CAP_MAIL, CAP_SUBMISSION];
 export async function sendNew(d: SendDeps, tool: string, o: Outgoing): Promise<SendOutcome> {
   await requireSubmission(d.client);
   const rcpt = gatekeep(d, tool, o.recipients);
+  const files = loadFiles(d, tool, rcpt, o.attachments);
   const subjectLength = safeSubject(o.subject).length;
   const p = await prepare(d.client, o.from);
   const s = await d.client.session();
-  return submit(d, tool, rcpt, subjectLength, async () => {
+  assertUploadable(s, files);
+  return submit(d, tool, { rcpt, subjectLength, ...attachmentInfo(files) }, async () => {
+    const uploaded = await uploadAll(d.client, files);
     const replies = await d.client.call(
       [
         [
           "Email/set",
-          { accountId: s.accountId, create: { draft: emailObject(o, p.address, p.drafts) } },
+          {
+            accountId: s.accountId,
+            create: { draft: emailObject(o, p.address, p.drafts, uploaded) },
+          },
           "e",
         ],
         [
@@ -261,14 +397,27 @@ export async function sendNew(d: SendDeps, tool: string, o: Outgoing): Promise<S
 export async function sendExistingDraft(
   d: SendDeps,
   tool: string,
-  draft: { id: string; from: Address | undefined; recipients: Recipients; subject: string },
+  draft: {
+    id: string;
+    from: Address | undefined;
+    recipients: Recipients;
+    subject: string;
+    /** Names of the files already in the draft, for the audit log only. */
+    attachmentNames?: string[];
+  },
 ): Promise<SendOutcome> {
   await requireSubmission(d.client);
   const rcpt = gatekeep(d, tool, draft.recipients);
   const subjectLength = safeSubject(draft.subject).length;
   const p = await prepare(d.client, draft.from?.email);
   const s = await d.client.session();
-  return submit(d, tool, rcpt, subjectLength, async () => {
+  const names = draft.attachmentNames ?? [];
+  const info = {
+    rcpt,
+    subjectLength,
+    ...(names.length > 0 ? { attachments: auditNames(names) } : {}),
+  };
+  return submit(d, tool, info, async () => {
     const replies = await d.client.call(
       [
         [
@@ -291,19 +440,36 @@ export async function sendExistingDraft(
   });
 }
 
-export async function createDraftOnly(
-  client: JmapClient,
-  o: Outgoing,
-): Promise<{ emailId: string }> {
-  const p = await prepare(client, o.from);
-  const s = await client.session();
-  const replies = await client.call([
-    [
-      "Email/set",
-      { accountId: s.accountId, create: { draft: emailObject(o, p.address, p.drafts) } },
-      "e",
-    ],
-  ]);
-  const made = created(JmapClient.pick(replies, "Email/set", "e"), "draft", "draft");
-  return { emailId: String(made.id ?? "") };
+export async function createDraftOnly(d: DraftDeps, o: Outgoing): Promise<{ emailId: string }> {
+  const tool = "create_draft";
+  const files = loadFiles(d, tool, [], o.attachments);
+  const p = await prepare(d.client, o.from);
+  const s = await d.client.session();
+  assertUploadable(s, files);
+  const subjectLength = safeSubject(o.subject).length;
+  try {
+    const uploaded = await uploadAll(d.client, files);
+    const replies = await d.client.call([
+      [
+        "Email/set",
+        {
+          accountId: s.accountId,
+          create: { draft: emailObject(o, p.address, p.drafts, uploaded) },
+        },
+        "e",
+      ],
+    ]);
+    const made = created(JmapClient.pick(replies, "Email/set", "e"), "draft", "draft");
+    d.log.audit({ tool, result: "draft_created", subjectLength, ...attachmentInfo(files) });
+    return { emailId: String(made.id ?? "") };
+  } catch (e) {
+    d.log.audit({
+      tool,
+      result: "error",
+      subjectLength,
+      ...attachmentInfo(files),
+      reason: "draft_failed",
+    });
+    throw e;
+  }
 }

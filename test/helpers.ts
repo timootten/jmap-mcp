@@ -14,6 +14,14 @@ export interface MockOptions {
   advertiseUrl?: string;
   emails?: Record<string, unknown>[];
   sessionStatus?: number;
+  /** Leave uploadUrl out of the session. */
+  noUpload?: boolean;
+  /** Answer every upload with this status. */
+  uploadStatus?: number;
+  /** Report one byte more than was uploaded. */
+  uploadSizeLie?: boolean;
+  /** Advertise maxSizeUpload in the core capability. */
+  maxSizeUpload?: number;
   redirectApiTo?: string;
 }
 
@@ -64,11 +72,27 @@ export function startMock(opts: MockOptions = {}) {
   const emails = opts.emails ?? defaultEmails();
   const created: Record<string, Record<string, unknown>> = {};
   let n = 0;
+  let blobN = 0;
+  const uploads: { blobId: string; type: string | null; bytes: Uint8Array; auth: string | null }[] =
+    [];
   const server: ReturnType<typeof Bun.serve> = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
     async fetch(req): Promise<Response> {
       const url = new URL(req.url);
+      if (req.method === "POST" && url.pathname.startsWith("/upload/")) {
+        const bytes = new Uint8Array(await req.arrayBuffer());
+        const type = req.headers.get("content-type");
+        const auth = req.headers.get("authorization");
+        log.push({ method: req.method, path: url.pathname, auth, body: { upload: true, type } });
+        if (opts.uploadStatus) return new Response("nope", { status: opts.uploadStatus });
+        const blobId = `blob${++blobN}`;
+        uploads.push({ blobId, type, bytes, auth });
+        return Response.json(
+          { accountId: "a1", blobId, type, size: bytes.length + (opts.uploadSizeLie ? 1 : 0) },
+          { status: 201 },
+        );
+      }
       const text = req.method === "POST" ? await req.text() : "";
       const body = text ? JSON.parse(text) : undefined;
       log.push({
@@ -86,6 +110,7 @@ export function startMock(opts: MockOptions = {}) {
             maxConcurrentRequests: 2,
             maxCallsInRequest: 16,
             maxSizeRequest: 1_000_000,
+            ...(opts.maxSizeUpload ? { maxSizeUpload: opts.maxSizeUpload } : {}),
           },
           "urn:ietf:params:jmap:mail": {},
         };
@@ -97,7 +122,7 @@ export function startMock(opts: MockOptions = {}) {
           username: "timo@example.org",
           apiUrl: `${adv}/jmap/`,
           downloadUrl: `${adv}/download/{accountId}/{blobId}/{name}?type={type}`,
-          uploadUrl: `${adv}/upload/{accountId}/`,
+          ...(opts.noUpload ? {} : { uploadUrl: `${adv}/upload/{accountId}/` }),
           state: "s1",
         });
       }
@@ -168,8 +193,18 @@ export function startMock(opts: MockOptions = {}) {
                 res.created = {};
                 for (const [k, v] of Object.entries(args.create as Record<string, any>)) {
                   const newId = `new${++n}`;
+                  const parts = ((v.bodyStructure?.subParts ?? []) as any[]).filter(
+                    (x) => x.blobId,
+                  );
                   created[newId] = {
                     ...v,
+                    attachments: parts.map((x, i) => ({
+                      partId: `a${i}`,
+                      blobId: x.blobId,
+                      name: x.name,
+                      type: x.type,
+                      size: 1,
+                    })),
                     id: newId,
                     to: v.to ?? [],
                     cc: v.cc ?? [],
@@ -205,6 +240,7 @@ export function startMock(opts: MockOptions = {}) {
     origin: `http://127.0.0.1:${server.port}`,
     sessionUrl: `http://127.0.0.1:${server.port}/jmap/session`,
     log,
+    uploads: () => uploads,
     apiCalls: () => log.filter((r) => r.path === "/jmap/" && r.method === "POST"),
     methods: () =>
       log.flatMap((r) =>
