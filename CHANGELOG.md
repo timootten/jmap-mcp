@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/timootten/jmap-mcp/compare/v0.1.3...v0.2.0) (2026-11-27)
+
+
+### Features
+
+* send files as attachments from a dedicated folder ([#24](https://github.com/timootten/jmap-mcp/issues/24)) ([bb42a8a](https://github.com/timootten/jmap-mcp/commit/bb42a8aca228e040511d0246ff84ecbce003db42))
+
 ## [0.1.3](https://github.com/timootten/jmap-mcp/compare/v0.1.2...v0.1.3) (2026-11-15)
 
 
