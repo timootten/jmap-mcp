@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { type Allowlist, parseAllowlist } from "./address.ts";
+import { checkAttachmentDir } from "./attachments.ts";
 import { ConfigError, Secret } from "./errors.ts";
 
 const KNOWN = new Set([
@@ -18,6 +19,8 @@ const KNOWN = new Set([
   "JMAP_DRAFTS",
   "JMAP_ORGANIZE",
   "JMAP_ATTACHMENTS",
+  "JMAP_ATTACHMENT_DIR",
+  "JMAP_ATTACHMENT_MAX_MB",
   "JMAP_STATE_DIR",
   "JMAP_ALLOW_INSECURE_LOCALHOST",
 ]);
@@ -37,6 +40,9 @@ export interface Config {
   drafts: boolean;
   organize: boolean;
   attachments: boolean;
+  /** Folder that outgoing attachments may come from. Sending files is off without it. */
+  attachmentDir: string | undefined;
+  attachmentMaxBytes: number;
   allowlist: Allowlist | undefined;
   /** `Infinity` when set to "unlimited". */
   sendLimitPerHour: number;
@@ -82,6 +88,15 @@ const schema = z.object({
   JMAP_DRAFTS: bool.optional(),
   JMAP_ORGANIZE: bool.optional(),
   JMAP_ATTACHMENTS: bool.optional(),
+  JMAP_ATTACHMENT_DIR: text(1024)
+    .refine((v) => isAbsolute(v), "must be an absolute path")
+    .optional(),
+  JMAP_ATTACHMENT_MAX_MB: z
+    .string()
+    .regex(/^[0-9]{1,3}$/, "must be a whole number from 1 to 100")
+    .transform(Number)
+    .refine((n) => n >= 1 && n <= 100, "must be a whole number from 1 to 100")
+    .optional(),
   JMAP_STATE_DIR: text(1024)
     .refine((v) => isAbsolute(v), "must be an absolute path")
     .optional(),
@@ -159,6 +174,12 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     if (c.JMAP_SEND === "true" && c.JMAP_ALLOWED_RECIPIENTS === undefined) {
       problems.push("JMAP_ALLOWED_RECIPIENTS: required when JMAP_SEND=true");
     }
+    if (c.JMAP_ATTACHMENT_DIR !== undefined && c.JMAP_SEND !== "true" && c.JMAP_DRAFTS !== "true") {
+      problems.push("JMAP_ATTACHMENT_DIR: needs JMAP_SEND=true or JMAP_DRAFTS=true");
+    }
+    if (c.JMAP_ATTACHMENT_MAX_MB !== undefined && c.JMAP_ATTACHMENT_DIR === undefined) {
+      problems.push("JMAP_ATTACHMENT_MAX_MB: has no effect without JMAP_ATTACHMENT_DIR");
+    }
   }
   if (problems.length > 0 || !c) {
     throw new ConfigError(`Invalid configuration:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
@@ -176,6 +197,8 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     }
     apiOrigin = u.origin;
   }
+
+  if (c.JMAP_ATTACHMENT_DIR !== undefined) checkAttachmentDir(c.JMAP_ATTACHMENT_DIR);
 
   let allowlist: Allowlist | undefined;
   if (c.JMAP_ALLOWED_RECIPIENTS !== undefined) {
@@ -211,6 +234,8 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     drafts: c.JMAP_DRAFTS === "true",
     organize: c.JMAP_ORGANIZE === "true",
     attachments: c.JMAP_ATTACHMENTS === "true",
+    attachmentDir: c.JMAP_ATTACHMENT_DIR,
+    attachmentMaxBytes: (c.JMAP_ATTACHMENT_MAX_MB ?? 15) * 1_000_000,
     allowlist,
     sendLimitPerHour: c.JMAP_SEND_LIMIT_PER_HOUR ?? 10,
     stateDir: c.JMAP_STATE_DIR ?? join(stateBase, "jmap-mcp"),

@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadConfig } from "../src/config.ts";
 import { ConfigError } from "../src/errors.ts";
 
@@ -200,5 +203,51 @@ describe("loadConfig", () => {
     } catch (e) {
       expect((e as Error).message).not.toContain("secretvalue1");
     }
+  });
+});
+
+describe("attachment folder", () => {
+  const folder = mkdtempSync(join(tmpdir(), "jmap-cfg-"));
+  const file = join(folder, "file.txt");
+  writeFileSync(file, "x");
+  afterAll(() => rmSync(folder, { recursive: true, force: true }));
+  const withSend = { JMAP_SEND: "true", JMAP_ALLOWED_RECIPIENTS: "a@x.org" };
+
+  test("is off by default", () => {
+    const c = loadConfig(base());
+    expect(c.attachmentDir).toBeUndefined();
+    expect(c.attachmentMaxBytes).toBe(15_000_000);
+  });
+  test("works with sending or with drafts", () => {
+    expect(loadConfig({ ...base(), ...withSend, JMAP_ATTACHMENT_DIR: folder }).attachmentDir).toBe(
+      folder,
+    );
+    expect(
+      loadConfig({ ...base(), JMAP_DRAFTS: "true", JMAP_ATTACHMENT_DIR: folder }).attachmentDir,
+    ).toBe(folder);
+  });
+  test("needs sending or drafts, otherwise it is a typo-sized mistake", () => {
+    fails({ ...base(), JMAP_ATTACHMENT_DIR: folder }, /needs JMAP_SEND=true or JMAP_DRAFTS=true/);
+  });
+  test("must be an existing, dedicated folder", () => {
+    const on = { ...base(), ...withSend };
+    fails({ ...on, JMAP_ATTACHMENT_DIR: "relative/dir" }, /absolute/);
+    fails({ ...on, JMAP_ATTACHMENT_DIR: join(folder, "missing") }, /does not exist/);
+    fails({ ...on, JMAP_ATTACHMENT_DIR: file }, /not a folder/);
+    fails({ ...on, JMAP_ATTACHMENT_DIR: "/" }, /dedicated/);
+  });
+  test("size limit", () => {
+    const on = { ...base(), ...withSend, JMAP_ATTACHMENT_DIR: folder };
+    expect(loadConfig({ ...on, JMAP_ATTACHMENT_MAX_MB: "5" }).attachmentMaxBytes).toBe(5_000_000);
+    expect(loadConfig({ ...on, JMAP_ATTACHMENT_MAX_MB: "100" }).attachmentMaxBytes).toBe(
+      100_000_000,
+    );
+    for (const bad of ["0", "101", "1.5", "-1", "abc", "5MB", ""]) {
+      fails({ ...on, JMAP_ATTACHMENT_MAX_MB: bad }, /JMAP_ATTACHMENT_MAX_MB/);
+    }
+    fails({ ...base(), ...withSend, JMAP_ATTACHMENT_MAX_MB: "5" }, /without JMAP_ATTACHMENT_DIR/);
+  });
+  test("a typo in the name is a startup error", () => {
+    fails({ ...base(), ...withSend, JMAP_ATTACHMENT_FOLDER: folder }, /JMAP_ATTACHMENT_FOLDER/);
   });
 });

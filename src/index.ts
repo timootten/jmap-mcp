@@ -28,6 +28,11 @@ if (config.send && config.allowlist?.any) {
     "JMAP_ALLOWED_RECIPIENTS=*: the recipient allowlist is off. Every valid address can receive mail.",
   );
 }
+if (config.attachmentDir && config.send && config.allowlist?.any) {
+  log.warn(
+    "JMAP_ATTACHMENT_DIR is set and any recipient is allowed: every file in that folder can be mailed to anyone. Keep the folder small and free of secrets.",
+  );
+}
 if (config.send && config.sendLimitPerHour === Number.POSITIVE_INFINITY) {
   log.warn("JMAP_SEND_LIMIT_PER_HOUR=unlimited: the send rate limit is off.");
 }
@@ -53,5 +58,5 @@ serveStdio(() => createServer({ config, client, limiter, log, redact }, { submis
   onerror: (e) => log.warn(`transport error: ${e.name}`),
 });
 log.info(
-  `ready: read=${config.read} drafts=${config.drafts} send=${config.send && submission} organize=${config.organize} attachments=${config.attachments}`,
+  `ready: read=${config.read} drafts=${config.drafts} send=${config.send && submission} organize=${config.organize} attachments=${config.attachments} send_files=${config.attachmentDir !== undefined}`,
 );

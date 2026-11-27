@@ -9,6 +9,8 @@ export const CAP_SUBMISSION = "urn:ietf:params:jmap:submission";
 const MAX_SESSION_BYTES = 256 * 1024;
 const MAX_API_BYTES = 8 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
+const MAX_UPLOAD_RESPONSE = 64 * 1024;
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 const sessionSchema = z.object({
   capabilities: z.record(z.string(), z.unknown()),
@@ -18,6 +20,11 @@ const sessionSchema = z.object({
   uploadUrl: z.string().optional(),
   eventSourceUrl: z.string().optional(),
   state: z.string().optional(),
+});
+
+const uploadSchema = z.object({
+  blobId: z.string().min(1).max(255),
+  size: z.number().optional(),
 });
 
 export interface Session {
@@ -31,6 +38,8 @@ export interface Session {
   maxConcurrentRequests: number;
   maxCallsInRequest: number;
   maxSizeRequest: number;
+  /** Largest single upload the server accepts, if it says so. */
+  maxSizeUpload: number | undefined;
 }
 
 export type Call = [method: string, args: Record<string, unknown>, id: string];
@@ -133,9 +142,16 @@ export class JmapClient {
   /** The only place that talks to the network. */
   async #send(
     url: string,
-    init: { method: "GET" | "POST"; body?: string },
+    init: {
+      method: "GET" | "POST";
+      body?: string | Uint8Array;
+      contentType?: string;
+      timeoutMs?: number;
+    },
     maxBytes: number,
   ): Promise<{ status: number; body: Uint8Array }> {
+    const contentType =
+      init.body === undefined ? undefined : (init.contentType ?? "application/json");
     let current = new URL(url);
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       if (!this.#allowed.has(current.origin)) {
@@ -149,11 +165,11 @@ export class JmapClient {
           method: init.method,
           body: init.body,
           redirect: "manual",
-          signal: AbortSignal.timeout(this.#timeoutMs),
+          signal: AbortSignal.timeout(init.timeoutMs ?? this.#timeoutMs),
           headers: {
             authorization: this.#authHeader,
             accept: "application/json",
-            ...(init.body === undefined ? {} : { "content-type": "application/json" }),
+            ...(contentType === undefined ? {} : { "content-type": contentType }),
           },
         });
       } catch (e) {
@@ -189,6 +205,9 @@ export class JmapClient {
   }
 
   #httpError(status: number, body: Uint8Array): JmapError {
+    if (status === 413) {
+      return new JmapError("The server refused the upload because it is too large (HTTP 413).");
+    }
     if (status === 401 || status === 403) {
       return new JmapError(
         `Authentication or permission failure (HTTP ${status}). Check the credentials and rights of the account.`,
@@ -250,6 +269,10 @@ export class JmapClient {
       maxConcurrentRequests: num(core.maxConcurrentRequests, 4),
       maxCallsInRequest: num(core.maxCallsInRequest, 16),
       maxSizeRequest: num(core.maxSizeRequest, 1_000_000),
+      maxSizeUpload:
+        typeof core.maxSizeUpload === "number" && core.maxSizeUpload > 0
+          ? core.maxSizeUpload
+          : undefined,
     };
     this.#gate.resize(Math.min(session.maxConcurrentRequests, 8));
     this.#session = session;
@@ -304,6 +327,36 @@ export class JmapClient {
     const hit = replies.find((r) => r[0] === method && r[2] === id);
     if (!hit) throw new JmapError(`The server sent no ${method} response.`);
     return hit[1];
+  }
+
+  /** Uploads one blob (RFC 8620 section 6.1) and returns its id. */
+  async upload(bytes: Uint8Array, type: string): Promise<string> {
+    const s = await this.session();
+    if (!s.uploadUrl) {
+      throw new PolicyError("This server does not offer uploads, so it cannot send attachments.");
+    }
+    if (s.maxSizeUpload !== undefined && bytes.byteLength > s.maxSizeUpload) {
+      throw new PolicyError(`A file is larger than the server accepts (${s.maxSizeUpload} bytes).`);
+    }
+    const url = s.uploadUrl.replace("{accountId}", encodeURIComponent(s.accountId));
+    const { status, body } = await this.#gate.run(() =>
+      this.#send(
+        url,
+        { method: "POST", body: bytes, contentType: type, timeoutMs: UPLOAD_TIMEOUT_MS },
+        MAX_UPLOAD_RESPONSE,
+      ),
+    );
+    if (status !== 200 && status !== 201) throw this.#httpError(status, body);
+    let parsed: { blobId: string; size?: number | undefined };
+    try {
+      parsed = uploadSchema.parse(JSON.parse(new TextDecoder().decode(body)));
+    } catch {
+      throw new JmapError("The upload response is not valid.");
+    }
+    if (parsed.size !== undefined && parsed.size !== bytes.byteLength) {
+      throw new JmapError("The server stored a different number of bytes than were uploaded.");
+    }
+    return parsed.blobId;
   }
 
   async download(
